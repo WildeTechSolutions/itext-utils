@@ -92,19 +92,34 @@ public class ITextUtil {
                 return fieldValues;
         }
 
+//        private static void traverseNodes(Node node, Map<String, String> fieldValues) {
+//                if (node.getNodeType() == Node.ELEMENT_NODE && node.hasChildNodes()) {
+//                        NodeList childNodes = node.getChildNodes();
+//                        for (int i = 0; i < childNodes.getLength(); i++) {
+//                                Node childNode = childNodes.item(i);
+//                                if (childNode.getNodeType() == Node.ELEMENT_NODE) {
+//                                        String fieldName = childNode.getLocalName();
+//                                        String fieldValue = childNode.getTextContent().trim();
+//                                        if (!fieldValue.isEmpty()) {
+//                                                fieldValues.put(fieldName, fieldValue);
+//                                        }
+//                                        traverseNodes(childNode, fieldValues);
+//                                }
+//                        }
+//                }
+//        }
+
         private static void traverseNodes(Node node, Map<String, String> fieldValues) {
-                if (node.getNodeType() == Node.ELEMENT_NODE && node.hasChildNodes()) {
+                log.debug("Node {}, is of type {}", node.getLocalName(), node.getNodeType());
+                if (node.getNodeType() == Node.ELEMENT_NODE) {
+                        String fieldName = node.getLocalName();
+                        String fieldValue = node.getTextContent().trim();
+                        fieldValues.put(fieldName, fieldValue);
+
                         NodeList childNodes = node.getChildNodes();
                         for (int i = 0; i < childNodes.getLength(); i++) {
                                 Node childNode = childNodes.item(i);
-                                if (childNode.getNodeType() == Node.ELEMENT_NODE) {
-                                        String fieldName = childNode.getLocalName();
-                                        String fieldValue = childNode.getTextContent().trim();
-                                        if (!fieldValue.isEmpty()) {
-                                                fieldValues.put(fieldName, fieldValue);
-                                        }
-                                        traverseNodes(childNode, fieldValues);
-                                }
+                                traverseNodes(childNode, fieldValues);
                         }
                 }
         }
