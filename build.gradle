@@ -1,0 +1,153 @@
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+    id 'signing'
+    id "org.javamodularity.moduleplugin" version "1.8.9" // Needed for non module dependencies like commons-beanutils
+}
+
+group = 'com.wildetechsolutions'
+version = VERSION_NAME
+
+ext {
+    nexusUrl = System.getenv('NEXUS_URL')
+    // Change the publish repository as needed
+    publishRepository = version.toString().endsWith("SNAPSHOT") ? "$nexusUrl/maven-snapshots/" : "$nexusUrl/maven-releases/"
+
+    publishDir = layout.buildDirectory.dir("sonatype").get().asFile.absolutePath
+    sonatypePublish = publishDir + "/" + POM_ARTIFACT_ID + '_' + version
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+
+    implementation group: 'com.itextpdf', name: 'itext-core', version: itext_version
+
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: slf4j
+
+    testImplementation platform('org.junit:junit-bom:5.9.1')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+}
+
+test {
+    useJUnitPlatform()
+}
+
+tasks.register('sourcesJar', Jar) {
+    from sourceSets.main.allJava
+    archiveClassifier.set('sources')
+}
+
+tasks.register('javadocJar', Jar) {
+    from javadoc
+    archiveClassifier.set('javadoc')
+}
+
+publishing {
+    publications {
+
+        mavenJava(MavenPublication) {
+            artifactId = POM_ARTIFACT_ID
+            pom {
+                name = POM_NAME
+                description = POM_DESCRIPTION
+
+                url = POM_URL
+                licenses {
+                    license {
+                        name = POM_LICENSE_NAME
+                        url = POM_LICENSE_URL
+                    }
+                }
+                developers {
+                    developer {
+                        id = POM_DEVELOPER_ID
+                        name = POM_DEVELOPER_NAME
+                        url = POM_DEVELOPER_URL
+                        email = POM_DEVELOPER_EMAIL
+                    }
+                }
+                scm {
+                    connection = POM_SCM_CONNECTION
+                    developerConnection = POM_SCM_DEV_CONNECTION
+                    url = POM_SCM_URL
+                }
+            }
+            from components.java
+            artifact sourcesJar
+            artifact javadocJar
+        }
+    }
+    repositories {
+
+        maven {
+            url publishRepository
+            credentials {
+                username = System.getenv('NEXUS_USER')
+                password = System.getenv('NEXUS_PASSWORD')
+            }
+        }
+
+        maven {
+            url file(project.ext.sonatypePublish)
+        }
+
+
+    }
+
+}
+
+task uploadBundle(type: Exec) {
+    // Check if the OS supports curl
+    doFirst {
+        // Set up the command to execute curl
+        commandLine 'curl', '--request', 'POST',
+                '--verbose',
+                '--header', 'Authorization: Bearer ' + SONATYPE_TOKEN,
+                '--form', "bundle=@" + project.ext.sonatypePublish + '.zip',
+                '"https://central.sonatype.com/api/v1/publisher/upload?name=' + GROUP + '.' + POM_ARTIFACT_ID + ':' + VERSION_NAME + '&publishingType=' + SONATYPE_PUBLISH + '"'
+    }
+
+    // Optionally handle the output
+    standardOutput = new ByteArrayOutputStream()
+    ext.output = {
+        return standardOutput.toString()
+    }
+    doLast {
+        println "Curl command output: ${output()}"
+    }
+}
+
+task zipLocalDirectory(type: Zip) {
+    // Replace 'path_to_your_directory' with the path to your local directory
+
+    // Set the destination directory and archive name
+    destinationDirectory = file(file(project.ext.sonatypePublish).parent)
+    archiveFileName = POM_ARTIFACT_ID + '_' + version + '.zip'
+
+    // Set the contents of the zip file to include all files and directories under 'directoryPath'
+    // but exclude files starting with 'maven-metadata'
+    from(project.ext.sonatypePublish) {
+        exclude '**/maven-metadata*'
+    }
+}
+
+task deployToSonatype {
+
+    dependsOn 'publish', 'zipLocalDirectory', 'uploadBundle'
+
+    uploadBundle.mustRunAfter zipLocalDirectory
+
+    doFirst {
+        file(project.ext.publishDir).delete()
+        if (version.endsWith('SNAPSHOT')) {
+            throw new GradleException("Cannot deploy SNAPSHOT version to Sonatype.")
+        }
+    }
+}
+
+signing {
+    sign publishing.publications.mavenJava
+}
